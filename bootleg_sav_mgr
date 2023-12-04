@@ -1,0 +1,139 @@
+save_filename="$1"
+rom_filename="$2"
+
+
+printf "\n\n\tRun this script as sudo to avoid problems with the process.\n\n"
+printf "\n\n\tThis script performs save extraction & injection of bootleg English Pokemon ROMs from AliExpress.\n\n"
+
+
+read -p "        Is it Crystal [c] or Generation I [i]? --> " ver
+
+
+printf "\n\n\tCreating ROM backup...\n"
+cp "$rom_filename" rom_backup.gbc && printf "\n\tBackup successful.\n\n"
+
+
+if [ "$ver" = "c" ]
+then
+
+    #extraction phase - crystal
+    #0x1200 - 0x2000
+    printf "\n\tCrystal operations:...\n"
+    printf "\n\tExtracting secondary copy...\n"
+    dd if=""$save_filename"" bs=1 skip=4608 count=3584 status=none of=sec_copy.bin
+   
+   
+    #0x2000 - 0x4000, includes gender
+    printf "\n\tExtracting primary copy...\n"
+    dd if=""$save_filename"" bs=1 skip=8192 count=8192 status=none of=prim_copy.bin
+    
+    
+    #0x4000 - 0x5E30, each box is 0x450
+    printf "\n\tExtracting PC boxes 1-7...\n"
+    dd if=""$save_filename"" bs=1 skip=16384 count=7728 status=none of=boxes1.bin
+    
+    
+    #0x6000 - 0x7E30
+    printf "\n\tExtracting PC boxes 8-14...\n"
+    dd if=""$save_filename"" bs=1 skip=24576 count=7728 status=none of=boxes2.bin
+    
+    
+    if [ -f sec_copy.bin -a -f prim_copy.bin -a -f boxes1.bin -a -f boxes2.bin ]
+        then
+            printf "\n\tExtraction successful.\n\n"
+	else
+	    printf "\n\tExtraction failed, something went wrong.\n\n"
+    fi
+
+    #injection phase - crystal
+    #0x1200 - 0x2000 into address 0x213200 in rom
+    printf "\n\tInjecting secondary Crystal copy...\n"
+    dd if=sec_copy.bin bs=1 seek=2175488 conv=notrunc status=none of="$rom_filename"
+
+
+    #0x2000 - 0x4000 into address 0x216000 in rom
+    printf "\n\tInjecting primary Crystal copy...\n"
+    dd if=prim_copy.bin bs=1 seek=2187264 conv=notrunc status=none of="$rom_filename"
+
+
+    #0x4000 - 0x5E30 into address 0x21A000 in rom
+    printf "\n\tInjecting PC boxes 1-7...\n"
+    dd if=boxes1.bin bs=1 seek=2203648 conv=notrunc status=none of="$rom_filename"
+    
+    
+    #0x6000 - 0x7E30 into address 0x21E000 in rom
+    printf "\n\tInjecting PC boxes 8-14...\n"
+    dd if=boxes2.bin bs=1 seek=2220032 conv=notrunc status=none of="$rom_filename"
+    
+    printf "\n\tInjection finished.\n\n\tNow re-write the ROM into the game cartridge.\n\n"
+    
+    #cleaning option
+    read -p "        Should I clean the extracted copies from this folder? [y/n] --> " clean
+        if [ "$clean" = "y" ]
+	    then
+	    	printf "\n\tRemoving .bin files...\n\n"
+	        rm sec_copy.bin prim_copy.bin boxes1.bin boxes2.bin
+	fi
+
+
+
+else
+    #extraction phase - yellow
+    #0x0 - 0x2000
+    printf "\n\tGeneration I operations:...\n"
+    printf "\n\tExtracting Bank 0...\n"
+    dd if="$save_filename" bs=1 skip=0 count=8192 status=none of=bank0.bin
+   
+   
+    #0x2000 - 0x4000, includes gender
+    printf "\n\tExtracting Bank 1...\n"
+    dd if="$save_filename" bs=1 skip=8192 count=8192 status=none of=bank1.bin
+    
+    
+    #0x4000 - 0x6000, each box is 0x450
+    printf "\n\tExtracting Bank 2...\n"
+    dd if="$save_filename" bs=1 skip=16384 count=8192 status=none of=bank2.bin
+    
+    
+    #0x6000 - 0x8000
+    printf "\n\tExtracting Bank 3...\n"
+    dd if="$save_filename" bs=1 skip=24576 count=8192 status=none of=bank3.bin
+    
+    
+    if [ -f bank0.bin -a -f bank1.bin -a -f bank2.bin -a -f bank3.bin ]
+        then
+            printf "\n\tExtraction successful.\n\n"
+	else
+	    printf "\n\tExtraction failed, something went wrong.\n\n"
+    fi
+
+    #injection phase - yellow
+    #0x0 - 0x2000 into address 0x112000 in rom
+    printf "\n\tInjecting Bank 0...\n"
+    dd if=bank0.bin bs=1 seek=1122304 conv=notrunc status=none of=""$rom_filename""
+
+
+    #0x2000 - 0x4000 into address 0x116000 in rom
+    printf "\n\tInjecting Bank 1...\n"
+    dd if=bank1.bin bs=1 seek=1138688 conv=notrunc status=none of=""$rom_filename""
+
+
+    #0x4000 - 0x6000 into address 0x11A000 in rom
+    printf "\n\tInjecting Bank 2...\n"
+    dd if=bank2.bin bs=1 seek=1155072 conv=notrunc status=none of=""$rom_filename""
+    
+    
+    #0x6000 - 0x8000 into address 0x11E000 in rom
+    printf "\n\tInjecting Bank 3...\n"
+    dd if=bank3.bin bs=1 seek=1171456 conv=notrunc status=none of=""$rom_filename""
+    
+    printf "\n\tInjection finished.\n\n\tNow re-write the ROM into the game cartridge.\n\n"
+    
+    #cleaning option
+    read -p "        Should I clean the extracted copies from this folder? [y/n] --> " clean
+        if [ "$clean" = "y" ]
+	    then
+	    	printf "\n\tRemoving .bin files...\n\n"
+	        rm bank0.bin bank1.bin bank2.bin bank3.bin
+	fi
+fi
