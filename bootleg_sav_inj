@@ -3,7 +3,7 @@ rom_filename="$2"
 
 
 printf "\n\n\tRun this script as sudo to avoid problems with the process.\n\n"
-printf "\n\n\tThis script performs save extraction & injection of bootleg English Pokemon ROMs from AliExpress.\n\n"
+printf "\n\n\tThis script performs save injection of bootleg English Pokemon ROMs from AliExpress.\n\n"
 
 
 read -p "        Is it Crystal [c] or Generation I [i]? --> " ver
