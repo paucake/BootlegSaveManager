@@ -1,139 +1,85 @@
+#!/bin/bash
+
 save_filename="$1"
 rom_filename="$2"
 
+if [ ! -f "$save_filename" ]; then
+    echo "$save_filename is not a regular file"
+    exit 1
+fi
 
-printf "\n\n\tRun this script as sudo to avoid problems with the process.\n\n"
-printf "\n\n\tThis script performs save injection of bootleg English Pokemon ROMs from AliExpress.\n\n"
+if [ ! -f "$rom_filename" ]; then
+    echo "$rom_filename is not a regular file"
+    exit 1
+fi
 
 
-read -p "        Is it Crystal [c] or Generation I [i]? --> " ver
+function copy_sav_to_game {
+    printf "\n\n\tCreating ROM backup...\n"
+    cp "$rom_filename" "${rom_filename%.*}.backup_$(date +%F_%Hh%Im%Ss).${rom_filename##*.}" && printf "\tBackup successful. File: ${rom_filename%.*}.backup_$(date +%F_%Hh%Im%Ss).${rom_filename##*.}\n\n"
+    dd bs=1          seek=$(( ($bank_number + 0) * 0x4000 + 0x2000 )) count=8k status=none conv=notrunc if="$save_filename" of="$rom_filename"
+    dd bs=1 skip=8k  seek=$(( ($bank_number + 1) * 0x4000 + 0x2000 )) count=8k status=none conv=notrunc if="$save_filename" of="$rom_filename"
+    dd bs=1 skip=16k seek=$(( ($bank_number + 2) * 0x4000 + 0x2000 )) count=8k status=none conv=notrunc if="$save_filename" of="$rom_filename"
+    dd bs=1 skip=24k seek=$(( ($bank_number + 3) * 0x4000 + 0x2000 )) count=8k status=none conv=notrunc if="$save_filename" of="$rom_filename"
+    printf "\n\tInjection finished.\n\tNow re-write the ROM into the game cartridge.\n\n"
+}
 
+function copy_sav_from_game {
+    printf "\n\n\tCreating SAV backup...\n"
+    cp "$save_filename" "${save_filename%.*}.backup_$(date +%F_%Hh%Im%Ss).${save_filename##*.}" && printf "\tBackup successful. File: ${save_filename%.*}.backup_$(date +%F_%Hh%Im%Ss).${save_filename##*.}\n\n"
+    dd bs=1 skip=$(( ($bank_number + 0) * 0x4000 + 0x2000 ))          count=8k status=none conv=notrunc if="$rom_filename" of="$save_filename"
+    dd bs=1 skip=$(( ($bank_number + 1) * 0x4000 + 0x2000 )) seek=8k  count=8k status=none conv=notrunc if="$rom_filename" of="$save_filename"
+    dd bs=1 skip=$(( ($bank_number + 2) * 0x4000 + 0x2000 )) seek=16k count=8k status=none conv=notrunc if="$rom_filename" of="$save_filename"
+    dd bs=1 skip=$(( ($bank_number + 3) * 0x4000 + 0x2000 )) seek=24k count=8k status=none conv=notrunc if="$rom_filename" of="$save_filename"
+    printf "\n\tExtraction finished.\n\t$save_filename now contains the save from the ROM.\n\n"
+}
 
-printf "\n\n\tCreating ROM backup...\n"
-cp "$rom_filename" rom_backup.gbc && printf "\n\tBackup successful.\n\n"
-
-
-if [ "$ver" = "c" ]
-then
-
-    #extraction phase - crystal
-    #0x1200 - 0x2000
-    printf "\n\tCrystal operations:...\n"
-    printf "\n\tExtracting secondary copy...\n"
-    dd if=""$save_filename"" bs=1 skip=4608 count=3584 status=none of=sec_copy.bin
-   
-   
-    #0x2000 - 0x4000, includes gender
-    printf "\n\tExtracting primary copy...\n"
-    dd if=""$save_filename"" bs=1 skip=8192 count=8192 status=none of=prim_copy.bin
-    
-    
-    #0x4000 - 0x5E30, each box is 0x450
-    printf "\n\tExtracting PC boxes 1-7...\n"
-    dd if=""$save_filename"" bs=1 skip=16384 count=7728 status=none of=boxes1.bin
-    
-    
-    #0x6000 - 0x7E30
-    printf "\n\tExtracting PC boxes 8-14...\n"
-    dd if=""$save_filename"" bs=1 skip=24576 count=7728 status=none of=boxes2.bin
-    
-    
-    if [ -f sec_copy.bin -a -f prim_copy.bin -a -f boxes1.bin -a -f boxes2.bin ]
-        then
-            printf "\n\tExtraction successful.\n\n"
-	else
-	    printf "\n\tExtraction failed, something went wrong.\n\n"
+# if two banks after another contain only 0xFF in the first half and other data in the second half, then it might be save data
+function check_bank_for_sav {
+    if [[ "$(dd bs=1 skip=$(( ($1 + 0) * 0x4000          )) count=8k status=none conv=notrunc if="$rom_filename" | sha1sum)" == "5e2b96c19c4f5c63a5afa2de504d29fe64a4c908  -" && \
+          "$(dd bs=1 skip=$(( ($1 + 0) * 0x4000 + 0x2000 )) count=8k status=none conv=notrunc if="$rom_filename" | sha1sum)" != "5e2b96c19c4f5c63a5afa2de504d29fe64a4c908  -" && \
+          "$(dd bs=1 skip=$(( ($1 + 1) * 0x4000          )) count=8k status=none conv=notrunc if="$rom_filename" | sha1sum)" == "5e2b96c19c4f5c63a5afa2de504d29fe64a4c908  -" && \
+          "$(dd bs=1 skip=$(( ($1 + 1) * 0x4000 + 0x2000 )) count=8k status=none conv=notrunc if="$rom_filename" | sha1sum)" != "5e2b96c19c4f5c63a5afa2de504d29fe64a4c908  -" ]]; then
+          bank_number=$1
     fi
+}
 
-    #injection phase - crystal
-    #0x1200 - 0x2000 into address 0x213200 in rom
-    printf "\n\tInjecting secondary Crystal copy...\n"
-    dd if=sec_copy.bin bs=1 seek=2175488 conv=notrunc status=none of="$rom_filename"
-
-
-    #0x2000 - 0x4000 into address 0x216000 in rom
-    printf "\n\tInjecting primary Crystal copy...\n"
-    dd if=prim_copy.bin bs=1 seek=2187264 conv=notrunc status=none of="$rom_filename"
-
-
-    #0x4000 - 0x5E30 into address 0x21A000 in rom
-    printf "\n\tInjecting PC boxes 1-7...\n"
-    dd if=boxes1.bin bs=1 seek=2203648 conv=notrunc status=none of="$rom_filename"
-    
-    
-    #0x6000 - 0x7E30 into address 0x21E000 in rom
-    printf "\n\tInjecting PC boxes 8-14...\n"
-    dd if=boxes2.bin bs=1 seek=2220032 conv=notrunc status=none of="$rom_filename"
-    
-    printf "\n\tInjection finished.\n\n\tNow re-write the ROM into the game cartridge.\n\n"
-    
-    #cleaning option
-    read -p "        Should I clean the extracted copies from this folder? [y/n] --> " clean
-        if [ "$clean" = "y" ]
-	    then
-	    	printf "\n\tRemoving .bin files...\n\n"
-	        rm sec_copy.bin prim_copy.bin boxes1.bin boxes2.bin
-	fi
-
-
-
+banks_in_rom=$(( $(stat -c%s "$rom_filename") / 0x4000 ))
+i=$banks_in_rom
+until [ $i -le 8 ] ; do
+    i=$(( $i - 4))
+    check_bank_for_sav $i
+done
+if [[ "$bank_number" != "" ]]; then
+    printf "\n\tbank autodetected: $(printf '0x%x' $bank_number)\n\n"
+    read -p "        Is it Crystal [c] or Yellow [y] or Green [g] or use autodetected bank [a]? --> " ver
 else
-    #extraction phase - yellow
-    #0x0 - 0x2000
-    printf "\n\tGeneration I operations:...\n"
-    printf "\n\tExtracting Bank 0...\n"
-    dd if="$save_filename" bs=1 skip=0 count=8192 status=none of=bank0.bin
-   
-   
-    #0x2000 - 0x4000, includes gender
-    printf "\n\tExtracting Bank 1...\n"
-    dd if="$save_filename" bs=1 skip=8192 count=8192 status=none of=bank1.bin
-    
-    
-    #0x4000 - 0x6000, each box is 0x450
-    printf "\n\tExtracting Bank 2...\n"
-    dd if="$save_filename" bs=1 skip=16384 count=8192 status=none of=bank2.bin
-    
-    
-    #0x6000 - 0x8000
-    printf "\n\tExtracting Bank 3...\n"
-    dd if="$save_filename" bs=1 skip=24576 count=8192 status=none of=bank3.bin
-    
-    
-    if [ -f bank0.bin -a -f bank1.bin -a -f bank2.bin -a -f bank3.bin ]
-        then
-            printf "\n\tExtraction successful.\n\n"
-	else
-	    printf "\n\tExtraction failed, something went wrong.\n\n"
-    fi
+    read -p "        Is it Crystal [c] or Yellow [y] or Green [g]? --> " ver
+fi
 
-    #injection phase - yellow
-    #0x0 - 0x2000 into address 0x112000 in rom
-    printf "\n\tInjecting Bank 0...\n"
-    dd if=bank0.bin bs=1 seek=1122304 conv=notrunc status=none of=""$rom_filename""
+echo ""
+read -p "        Copy from game to sav [1] or from sav to game [2]? --> " copy
 
 
-    #0x2000 - 0x4000 into address 0x116000 in rom
-    printf "\n\tInjecting Bank 1...\n"
-    dd if=bank1.bin bs=1 seek=1138688 conv=notrunc status=none of=""$rom_filename""
+if [ "$ver" = "c" ]; then
+    bank_number="0x84" # crystal bank number 0x84-0x87
+elif [ "$ver" = "y" ]; then
+    bank_number="0x40" # yellow bank number 0x40-0x43
+elif [ "$ver" = "g" ]; then
+    bank_number="0x34" # green bank number 0x34-0x37
+elif [ "$ver" = "a" ]; then
+    true
+else
+    echo "no game selected"
+    exit 1
+fi
 
 
-    #0x4000 - 0x6000 into address 0x11A000 in rom
-    printf "\n\tInjecting Bank 2...\n"
-    dd if=bank2.bin bs=1 seek=1155072 conv=notrunc status=none of=""$rom_filename""
-    
-    
-    #0x6000 - 0x8000 into address 0x11E000 in rom
-    printf "\n\tInjecting Bank 3...\n"
-    dd if=bank3.bin bs=1 seek=1171456 conv=notrunc status=none of=""$rom_filename""
-    
-    printf "\n\tInjection finished.\n\n\tNow re-write the ROM into the game cartridge.\n\n"
-    
-    #cleaning option
-    read -p "        Should I clean the extracted copies from this folder? [y/n] --> " clean
-        if [ "$clean" = "y" ]
-	    then
-	    	printf "\n\tRemoving .bin files...\n\n"
-	        rm bank0.bin bank1.bin bank2.bin bank3.bin
-	fi
+if [ "$copy" = "1" ]; then
+    copy_sav_from_game
+elif [ "$copy" = "2" ]; then
+    copy_sav_to_game
+else
+    echo "no copy mode selected"
+    exit 1
 fi
